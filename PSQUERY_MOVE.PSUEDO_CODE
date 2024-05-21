@@ -1,0 +1,68 @@
+
+
+## Know These Values Usernames/Passwords
+	Query Name (QUERYNAME)
+	Source PeopleSoft DB (SOURCE_INSTANCE)
+	Target PeopleSoft DB (TARGET_INSTANCE)
+	Source PeopleSoft USER (SOURCE_USER)
+	Source PeopleSoft USER Passowrd (SOURCE_PASS)
+	Target PeopleSoft USER (TARGET_USER)
+	Target PeopleSoft USER Passowrd (TARGET_PASS)
+	Connect ID (People( Password ( PEOPLEPASS )
+
+##  Create these Value: 
+	Query Project Name (QUERYPROJECT_$(date +%y%m%d_%H%M%S))
+	DMS File Name (DMS_FILE)
+	Yes/No Connected Query (CONNECTED_QUERY)
+	Yes/No Composite Query ( COMPOSITE QUERY)
+	Email Notification (NOTIFICATION EMAIL)
+
+###  Determine the 'Type' of query you are going to move, assign Object Types/IDs
+	#'Normal' Query
+	     OBJECTYPE=10
+	     OBJECTID1=30
+	#Connected Query
+	      OBJECTYPE=91
+	      OBJECTID1=155
+	#Composite Query
+	      OBJECTYPE=123
+	      OBJECTID1=194
+
+### Datamover / Enviroment Variables (UNIX)
+	DataMover Home ( DM_HOME )
+	DataMove Import filepath ( PS_DM_DATA_IN )
+	DataMover Output filepath ( PS_DM_DATA_OUT )
+	DataMover Script filepath ( PS_DM_SCRIPT )
+	DataMover Log Filepath ( PS_DM_LOG )
+	LD Lib Path PS_HOME/bin ( LD_LIBRARY_PATH )
+
+###  DMS the query to a DAT file for Inspection
+	echo "export psqrydefn where QRYNAME = '$QUERYNAME'" > $DMS_FILE
+	$PS_HOME/bin/psdmtx -CT ORACLE -CD $SOURCE_INSTANCE -CO $SOURCE_USER -CP $SOURCE_PASS -CI people -CW $PEOPLEPASS -I 0 -FP $DMS_FILE
+
+### Look at the .DAT file, Check to make sure the query exists, Determine if it is Private, and who owns the Query
+	USERID=`grep $QUERYNAME $PS_DM_DATA_OUT/datamove.dat | grep -v QRYNAME | awk -F "," '{print $1}'|head -1`
+	if [[ $USERID = "A( )" ]]; then
+		$PRIVATE_USER=" "
+	elif [ "${#USERID}" = "11" ]; then
+			PRIVATE_USER=`echo $USERID | cut -c 3-10`
+			echo "$QUERYNAME is a private query for USER: $PRIVATE_USER" 6
+		else
+			echo "A query by the name $QUERYNAME not found in $SOURCE_INSTANCE" 1
+	fi
+
+### Create an Empty Project in Appdesigner
+	$PS_HOME/bin/psidex -CT ORACLE -CD $SOURCE_INSTANCE -CO $SOURCE_USER -CP $SOURCE_PASS -CI people -CW $PEOPLEPASS -PJR $QUERYPROJECT -OBJ 99 -LF $QUERYPROJECT_project_create.log
+
+### Create a DMS to insert the PSQUERY into the Project
+	echo "Insert into PSPROJECTITEM (PROJECTNAME,OBJECTTYPE,OBJECTID1,OBJECTVALUE1,OBJECTID2,OBJECTVALUE2,OBJECTID3,OBJECTVALUE3,OBJECTID4,OBJECTVALUE4,NODETYPE,SOURCESTATUS,TARGETSTATUS,UPGRADEACTION,TAKEACTION,COPYDONE) values ('$QUERYPROJECT',$OBJECTYPE,$OBJECTID1,'$QUERYNAME',25,'$PRIVATE_USER',0,' ',0,' ',0,0,0,0,1,0);" > $DMS_FILE
+
+### Run the DMS to Insert the PSQUERY into the Project
+	$PS_HOME/bin/psdmtx -CT ORACLE -CD $SOURCE_INSTANCE -CO $SOURCE_USER -CP $SOURCE_PASS -CI people -CW $PEOPLEPASS -I 0 -FP $DMS_FILE
+
+### Run Command line Appdesigner to export the project to a file from the Source
+	$PS_HOME/bin/psidex -HIDE -PJTF $QUERYPROJECT -FP $PS_HOME/query_move/current -CT ORACLE -CD $SOURCE_INSTANCE -CO $SOURCE_USER -CP $SOURCE_PASS -CI people -CW $PEOPLEPASS -QUIET -LF $PS_HOME/query_move/current/$QUERYPROJECT_copy_to_file.log
+
+### Run the Command line Appdesigner to Import the Project into the Target
+	$PS_HOME/bin/psidex -HIDE -PJFF $QUERYPROJECT -FP $PS_HOME/query_move/current -CT ORACLE -CD $TARGET_INSTANCE -CO $TARGET_USER -CP $TARGET_PASS -CI people -CW $PEOPLEPASS -QUIET -LF $PS_HOME/query_move/current/$QUERYPROJECT_copy_from_file.log
+
